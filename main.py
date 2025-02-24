@@ -2,27 +2,29 @@ import streamlit as st
 import yt_dlp
 import os
 
-def baixar_videos(urls, caminho_destino=".", stop_on_error=False, logger=print):
+def baixar_videos(urls, caminho_destino="./downloads", stop_on_error=False, logger=print):
     # Cria o diretório se não existir
     if not os.path.exists(caminho_destino):
         os.makedirs(caminho_destino)
 
-    # Define o template do caminho para salvar os arquivos de forma OS-agnóstica
+    # Template para salvar os arquivos de forma OS-agnóstica
     outtmpl = os.path.join(caminho_destino, '%(title)s.%(ext)s')
 
-    # Configuração utilizando o arquivo de cookies exportado (cookies.txt)
+    # Configuração utilizando cookies.txt
     ydl_opts_cookies = {
         'outtmpl': outtmpl,
-        'cookiefile': 'www.youtube.com_cookies',  # Certifique-se de que este arquivo esteja atualizado
-        'overwrites': True  # Força a sobrescrita do arquivo, se necessário
+        'cookiefile': 'www.youtube.com_cookies',
+        'overwrites': True  # Força sobrescrita se o arquivo já existir
     }
     
-    # Configuração utilizando os cookies do navegador Firefox (perfil padrão)
+    # Configuração utilizando cookies do Firefox
     ydl_opts_firefox = {
         'outtmpl': outtmpl,
         'cookiesfrombrowser': ('firefox',),
         'overwrites': True
     }
+    
+    arquivos_baixados = []
     
     for url in urls:
         try:
@@ -31,7 +33,6 @@ def baixar_videos(urls, caminho_destino=".", stop_on_error=False, logger=print):
                 ydl.download([url])
         except Exception as e:
             error_message = str(e)
-            # Se o erro indicar restrição de idade, utiliza cookies do Firefox
             if "Sign in to confirm your age" in error_message:
                 logger(f"\nVídeo com restrição de idade detectado: {url}")
                 logger("Utilizando cookies do navegador (Firefox) para autenticação...")
@@ -39,53 +40,42 @@ def baixar_videos(urls, caminho_destino=".", stop_on_error=False, logger=print):
                     with yt_dlp.YoutubeDL(ydl_opts_firefox) as ydl:
                         ydl.download([url])
                 except Exception as e2:
-                    error_message_firefox = str(e2)
-                    logger(f"\nErro utilizando cookies do Firefox: {error_message_firefox}")
+                    logger(f"\nErro utilizando cookies do Firefox: {str(e2)}")
                     if stop_on_error:
                         logger("Encerrando o processo de download devido ao erro.")
-                        return
+                        return arquivos_baixados
                     else:
-                        continue  # Pula o vídeo problemático e continua
+                        continue
             else:
-                # Para outros erros, exibe a mensagem e decide o que fazer conforme a opção
                 logger(f"\nErro ao baixar {url}: {error_message}")
                 if stop_on_error:
                     logger("Encerrando o processo de download devido ao erro.")
-                    return
+                    return arquivos_baixados
                 else:
                     continue
-
-# Define caminhos padrão, se possível
-if os.name == 'nt':  # Windows
-    default_download = os.path.join(os.environ['USERPROFILE'], 'Downloads')
-    default_desktop = os.path.join(os.environ['USERPROFILE'], 'Desktop')
-else:
-    default_download = os.path.expanduser('~/Downloads')
-    default_desktop = os.path.expanduser('~/Desktop')
+        
+        # Após o download, tenta identificar o arquivo baixado
+        # Aqui, consideramos que o título do vídeo pode ter sido sanitizado
+        # Para simplificar, listamos os arquivos no diretório destino
+        for arquivo in os.listdir(caminho_destino):
+            caminho_completo = os.path.join(caminho_destino, arquivo)
+            # Se o arquivo estiver presente e for recente, adiciona à lista
+            arquivos_baixados.append(caminho_completo)
+    
+    return arquivos_baixados
 
 # Interface Streamlit
 st.title("Download de Vídeos Gratuito")
-st.write("Utilize a interface abaixo para baixar vídeos informando as URLs e escolhendo o diretório de destino.")
+st.write("Use a interface para baixar vídeos e depois faça o download para seu computador.")
 
-# Seleção do diretório de destino
-path_options = {
-    "Downloads": default_download,
-    "Desktop": default_desktop,
-    "Outro caminho": ""
-}
-
-opcao = st.selectbox("Selecione o diretório onde deseja salvar os vídeos:", list(path_options.keys()))
-
-if opcao == "Outro caminho":
-    caminho = st.text_input("Digite o caminho completo para salvar os vídeos:", value=".")
-else:
-    caminho = path_options[opcao]
-    st.write(f"Caminho selecionado: {caminho}")
+# Para deploy, usamos um diretório relativo
+default_path = "./downloads"
+st.write(f"Os vídeos serão salvos no diretório: **{default_path}** (relativo ao diretório da aplicação)")
 
 # Entrada das URLs
-urls_input = st.text_area("URLs dos vídeos (informe uma por linha ou separadas por vírgula/espaço)")
+urls_input = st.text_area("URLs dos vídeos (uma por linha ou separadas por vírgula/espaço)")
 
-# Opção para interromper o download caso ocorra algum erro
+# Opção para interromper o download em caso de erro
 stop_on_error = st.checkbox("Parar o processo se ocorrer algum erro?", value=False)
 
 # Área para exibição dos logs
@@ -95,16 +85,23 @@ if st.button("Baixar Vídeos"):
     if not urls_input.strip():
         st.error("Nenhuma URL foi fornecida!")
     else:
-        # Processa as URLs informadas (removendo espaços em branco e separando por vírgula, espaço ou nova linha)
         lista_urls = [url.strip() for url in urls_input.replace(',', ' ').split() if url.strip()]
         log_messages = []
 
-        # Função para registrar mensagens na interface
         def logger(message):
             log_messages.append(message)
             log_placeholder.text("\n".join(log_messages))
 
         logger("Iniciando o processo de download...")
-        baixar_videos(lista_urls, caminho, stop_on_error, logger)
+        arquivos = baixar_videos(lista_urls, default_path, stop_on_error, logger)
         logger("\nProcesso de download finalizado!")
-        st.success("Download concluído!")
+        
+        if arquivos:
+            st.success("Download concluído!")
+            st.write("Arquivos baixados:")
+            for arquivo in arquivos:
+                # Disponibiliza um botão de download para cada arquivo
+                with open(arquivo, "rb") as f:
+                    st.download_button(label=f"Baixar {os.path.basename(arquivo)}", data=f, file_name=os.path.basename(arquivo))
+        else:
+            st.error("Nenhum arquivo foi baixado.")
