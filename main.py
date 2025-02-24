@@ -7,16 +7,21 @@ def baixar_videos(urls, caminho_destino=".", stop_on_error=False, logger=print):
     if not os.path.exists(caminho_destino):
         os.makedirs(caminho_destino)
 
+    # Define o template do caminho para salvar os arquivos de forma OS-agnóstica
+    outtmpl = os.path.join(caminho_destino, '%(title)s.%(ext)s')
+
     # Configuração utilizando o arquivo de cookies exportado (cookies.txt)
     ydl_opts_cookies = {
-        'outtmpl': f'{caminho_destino}/%(title)s.%(ext)s',
-        'cookiefile': 'www.youtube.com_cookies'  # Certifique-se de que este arquivo esteja atualizado
+        'outtmpl': outtmpl,
+        'cookiefile': 'www.youtube.com_cookies',  # Certifique-se de que este arquivo esteja atualizado
+        'overwrites': True  # Força a sobrescrita do arquivo, se necessário
     }
     
     # Configuração utilizando os cookies do navegador Firefox (perfil padrão)
     ydl_opts_firefox = {
-        'outtmpl': f'{caminho_destino}/%(title)s.%(ext)s',
-        'cookiesfrombrowser': ('firefox',)
+        'outtmpl': outtmpl,
+        'cookiesfrombrowser': ('firefox',),
+        'overwrites': True
     }
     
     for url in urls:
@@ -50,18 +55,32 @@ def baixar_videos(urls, caminho_destino=".", stop_on_error=False, logger=print):
                 else:
                     continue
 
-# Define o caminho padrão para a pasta Downloads do Windows, se aplicável
-if os.name == 'nt':  # Verifica se o sistema é Windows
-    caminho_padrao = os.path.join(os.environ['USERPROFILE'], 'Downloads')
+# Define caminhos padrão, se possível
+if os.name == 'nt':  # Windows
+    default_download = os.path.join(os.environ['USERPROFILE'], 'Downloads')
+    default_desktop = os.path.join(os.environ['USERPROFILE'], 'Desktop')
 else:
-    caminho_padrao = "."
+    default_download = os.path.expanduser('~/Downloads')
+    default_desktop = os.path.expanduser('~/Desktop')
 
 # Interface Streamlit
 st.title("Download de Vídeos Gratuito")
-st.write("Utilize a interface abaixo para baixar vídeos informando as URLs e o diretório de destino.")
+st.write("Utilize a interface abaixo para baixar vídeos informando as URLs e escolhendo o diretório de destino.")
 
-# Entrada do diretório de destino já configurada para a pasta Downloads do Windows (se estiver no Windows)
-caminho = st.text_input("Caminho para salvar os vídeos", value=caminho_padrao)
+# Seleção do diretório de destino
+path_options = {
+    "Downloads": default_download,
+    "Desktop": default_desktop,
+    "Outro caminho": ""
+}
+
+opcao = st.selectbox("Selecione o diretório onde deseja salvar os vídeos:", list(path_options.keys()))
+
+if opcao == "Outro caminho":
+    caminho = st.text_input("Digite o caminho completo para salvar os vídeos:", value=".")
+else:
+    caminho = path_options[opcao]
+    st.write(f"Caminho selecionado: {caminho}")
 
 # Entrada das URLs
 urls_input = st.text_area("URLs dos vídeos (informe uma por linha ou separadas por vírgula/espaço)")
